@@ -74,6 +74,8 @@ impl Debug for SmatchError {
 enum Token {
   OpenParen(usize),
   CloseParen(usize),
+  //OpenBraket(usize),
+  //CloseBracket(usize),
   Numeral(usize, usize),
   Decimal(usize, usize),
   Str(usize, usize),
@@ -107,11 +109,13 @@ enum SExprParser {} impl SExprParser {
 
     fn valid_id_char(c: char) -> bool {
       ('a'<=c && c<='z') || ('A'<=c && c<='Z') || ('0'<=c && c<='9') ||
-      one_of!(c, '~', '!', '@', '$', '%', '^', '&', '*', '_', '-', '+', '=', '<', '>', '.' , '?', '/', ':')
+      one_of!(c, '#', '\\', ',', '\'', '`', '~', '!', '@', '$',
+              '%', '^', '&', '*', '_', '-', '+', '=', '<', '>',
+              '.' , '?', '/', ':')
     }
 
     // skip whitespace
-    while inbounds!() && one_of!(bytes[*cursor] as char, ' ', '\n', '\r', '\t') { *cursor += 1; }
+    while inbounds!() && one_of!(bytes[*cursor] as char, ' ', '\n', '\r', '\t', '\x0c') { *cursor += 1; }
 
     if !inbounds!() { return err!("End-of-input") }
 
@@ -124,6 +128,8 @@ enum SExprParser {} impl SExprParser {
       },
       '(' => Ok(OpenParen(*cursor-1)),
       ')' => Ok(CloseParen(*cursor-1)),
+      //'[' => Ok(OpenBraket(*cursor-1)),
+      //']' => Ok(CloseBracket(*cursor-1)),
       '0'..='9' => {
         while inbounds!() && '0' <= current!() && current!() <= '9' { consume!(); }
         Ok(if inbounds!() && current!() == '.' {
@@ -145,7 +151,7 @@ enum SExprParser {} impl SExprParser {
     },
       '|' => loop {
         if !inbounds!() { break err!("{}: Non-terminated quoted symbol", *cursor-1) }
-        if current!() == '\\' { break Err(SmatchError(format!("{cursor}: \\ not allowed in quoted symbols"))) }
+        // if current!() == '\\' { break Err(SmatchError(format!("{cursor}: \\ not allowed in quoted symbols"))) }
         if current!() == '|' { consume!(); break Ok(Symbol(token_start+1, *cursor-1)) }
         consume!();
       }
@@ -156,7 +162,7 @@ enum SExprParser {} impl SExprParser {
       c => err!("{}: Illegal character {c}", *cursor-1)
     };
 
-    while inbounds!() && one_of!(bytes[*cursor] as char, ' ', '\n', '\r', '\t') { *cursor += 1; }
+    while inbounds!() && one_of!(bytes[*cursor] as char, ' ', '\n', '\r', '\t', '\x0c') { *cursor += 1; }
 
     result
   }}}
@@ -169,6 +175,7 @@ enum SExprParser {} impl SExprParser {
       let token = SExprParser::next_token(contents, cursor)?;
       match token {
         CloseParen(_) => err!("{cursor}: Too many closing parentheses"),
+        // CloseBracket(_) => err!("{cursor}: Too many closing brackets"),        
         Numeral(start, end) => Ok(Atom(Literal::Numeral(
           contents[start..end].parse().map_err(|_| err2!("{cursor}: Could not parse number"))?))),
         Decimal(start, end) => Ok(Atom(Literal::Decimal(
@@ -189,6 +196,22 @@ enum SExprParser {} impl SExprParser {
           };
           Ok(List(vec))
         }
+        /*
+        OpenBraket(_) => {
+          let mut vec = vec![];
+          loop {
+            let old_cursor = *cursor;
+            let token = SExprParser::next_token(contents, cursor)?;
+            if let CloseBracket(_) = token {
+              break;
+            } else {
+              *cursor = old_cursor;
+              vec.push(aux(contents, cursor)?);
+            }
+          };
+          Ok(List(vec))
+        }        
+        */
       }
     }
 
